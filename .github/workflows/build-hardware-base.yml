@@ -1,0 +1,169 @@
+name: Build Armbian Hardware Base
+
+on:
+  workflow_dispatch:
+    inputs:
+      board:
+        description: "Exact Armbian BOARD identifier"
+        required: true
+        type: string
+      profile:
+        description: "Image profile"
+        required: true
+        default: stock
+        type: choice
+        options:
+          - stock
+          - vyos-base
+          - vyos-parity
+      branch:
+        description: "Armbian kernel branch"
+        required: true
+        default: edge
+        type: choice
+        options:
+          - edge
+      release:
+        description: "Debian/Ubuntu release"
+        required: true
+        default: trixie
+        type: string
+      armbian_ref:
+        description: "Exact Armbian git commit/tag/ref"
+        required: true
+        type: string
+      vyos_version:
+        description: "VyOS Rolling reference for profile C"
+        required: false
+        default: latest
+        type: string
+      publish:
+        description: "Create a private GitHub release after successful build"
+        required: true
+        default: true
+        type: boolean
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 180
+
+    steps:
+      - name: Checkout hardware-base repository
+        uses: actions/checkout@v4
+
+      - name: Validate profile implementation state
+        shell: bash
+        run: |
+          set -euo pipefail
+          case "${{ inputs.profile }}" in
+            stock)
+              ;;
+            vyos-base)
+              echo "Profile B is intentionally blocked until the golden-reference package/kernel baseline is imported." >&2
+              exit 20
+              ;;
+            vyos-parity)
+              echo "Profile C is intentionally blocked until profile B and VyOS kernel-parity policy are imported." >&2
+              exit 21
+              ;;
+            *)
+              exit 22
+              ;;
+          esac
+
+      - name: Free runner disk space
+        shell: bash
+        run: |
+          sudo rm -rf /usr/local/lib/android /usr/share/dotnet /opt/ghc || true
+          df -h /
+
+      - name: Checkout exact Armbian build framework
+        shell: bash
+        run: |
+          set -euo pipefail
+          git clone --filter=blob:none https://github.com/armbian/build.git armbian-build
+          git -C armbian-build checkout '${{ inputs.armbian_ref }}'
+          git -C armbian-build rev-parse HEAD | tee armbian-build-commit.txt
+
+      - name: Verify exact Armbian board and edge target
+        shell: bash
+        run: |
+          set -euo pipefail
+          found=
+          for ext in conf csc wip eos tvb; do
+            p="armbian-build/config/boards/${{ inputs.board }}.${ext}"
+            if [[ -f "$p" ]]; then found="$p"; break; fi
+          done
+          [[ -n "$found" ]] || { echo "Unknown Armbian BOARD=${{ inputs.board }}" >&2; exit 30; }
+          grep -Eq 'KERNEL_TARGET=.*(^|,|")edge(,|"|$)' "$found" || {
+            echo "BOARD=${{ inputs.board }} does not advertise edge at this Armbian ref" >&2
+            exit 31
+          }
+          echo "Using board config: $found"
+
+      - name: Build Stock Armbian Edge minimal image
+        working-directory: armbian-build
+        shell: bash
+        run: |
+          set -euo pipefail
+          ./compile.sh build \
+            BOARD='${{ inputs.board }}' \
+            BRANCH='${{ inputs.branch }}' \
+            RELEASE='${{ inputs.release }}' \
+            BUILD_DESKTOP=no \
+            BUILD_MINIMAL=yes \
+            KERNEL_CONFIGURE=no \
+            NETWORKING_STACK=systemd-networkd \
+            SHARE_LOG=no
+
+      - name: Collect image and build metadata
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p release-assets
+          mapfile -t imgs < <(find armbian-build/output/images -maxdepth 1 -type f \( -name '*.img' -o -name '*.img.xz' -o -name '*.img.zst' \) -print)
+          ((${#imgs[@]} > 0)) || { echo "No image found" >&2; exit 40; }
+          cp -a "${imgs[@]}" release-assets/
+          cp armbian-build-commit.txt release-assets/
+          cat > release-assets/BUILD-INFO.txt <<EOF
+          board=${{ inputs.board }}
+          profile=${{ inputs.profile }}
+          branch=${{ inputs.branch }}
+          release=${{ inputs.release }}
+          armbian_ref=${{ inputs.armbian_ref }}
+          armbian_commit=$(cat armbian-build-commit.txt)
+          github_run_id=${{ github.run_id }}
+          github_sha=${{ github.sha }}
+          EOF
+          (
+            cd release-assets
+            sha256sum * > SHA256SUMS
+          )
+          ls -lh release-assets
+
+      - name: Upload workflow artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: hardware-base-${{ inputs.board }}-${{ inputs.profile }}
+          path: release-assets/
+          if-no-files-found: error
+          retention-days: 14
+
+      - name: Publish private GitHub release
+        if: ${{ inputs.publish }}
+        env:
+          GH_TOKEN: ${{ github.token }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          short="${{ inputs.armbian_ref }}"
+          short="${short:0:12}"
+          tag="hb-${{ inputs.board }}-${{ inputs.profile }}-${{ github.run_number }}"
+          gh release create "$tag" release-assets/* \
+            --repo "$GITHUB_REPOSITORY" \
+            --title "${{ inputs.board }} / ${{ inputs.profile }} / Armbian Edge" \
+            --notes "BOARD=${{ inputs.board }}; profile=${{ inputs.profile }}; branch=${{ inputs.branch }}; release=${{ inputs.release }}; Armbian ref=${{ inputs.armbian_ref }}."
