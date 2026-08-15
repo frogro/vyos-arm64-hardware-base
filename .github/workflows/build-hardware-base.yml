@@ -53,7 +53,7 @@ jobs:
 
     steps:
       - name: Checkout hardware-base repository
-        uses: actions/checkout@v4
+        uses: actions/checkout@v7
 
       - name: Validate profile implementation state
         shell: bash
@@ -89,6 +89,14 @@ jobs:
           git -C armbian-build checkout '${{ inputs.armbian_ref }}'
           git -C armbian-build rev-parse HEAD | tee armbian-build-commit.txt
 
+      - name: Prepare native Armbian build host
+        working-directory: armbian-build
+        shell: bash
+        run: |
+          set -euo pipefail
+          sudo ./compile.sh requirements
+          sudo chown -R "$USER:$USER" .
+
       - name: Verify exact Armbian board and edge target
         shell: bash
         run: |
@@ -111,6 +119,7 @@ jobs:
         run: |
           set -euo pipefail
           ./compile.sh build \
+            PREFER_DOCKER=no \
             BOARD='${{ inputs.board }}' \
             BRANCH='${{ inputs.branch }}' \
             RELEASE='${{ inputs.release }}' \
