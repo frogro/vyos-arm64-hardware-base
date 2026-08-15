@@ -49,7 +49,7 @@ permissions:
 jobs:
   build:
     runs-on: ubuntu-24.04
-    timeout-minutes: 180
+    timeout-minutes: 360
 
     steps:
       - name: Checkout hardware-base repository
@@ -118,8 +118,60 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
+          echo "===== BUILD HOST BEFORE COMPILE ====="
+          echo "Time: $(date -u --iso-8601=seconds)"
+          echo "CPU:"
+          nproc
+          lscpu | grep -E 'Model name|CPU\(s\)|Thread|Core|Socket' || true
+          echo
+          free -h
+          echo
+          swapon --show || true
+          echo
+          df -h /
+          echo
+
+          (
+            while true; do
+              echo
+              echo "===== RESOURCE MONITOR $(date -u --iso-8601=seconds) ====="
+              uptime || true
+
+              echo "--- memory ---"
+              free -h || true
+
+              echo "--- swap ---"
+              swapon --show || true
+
+              echo "--- disk ---"
+              df -h / || true
+
+              echo "--- top CPU/RAM processes ---"
+              ps -eo pid,ppid,state,%cpu,%mem,rss,etime,comm,args \
+                --sort=-%cpu | head -30 || true
+
+              echo "--- compiler processes ---"
+              ps -eo pid,ppid,state,%cpu,%mem,rss,etime,comm,args |
+                grep -E '(^|/)(cc1|gcc|g\+\+|make|ninja|ld)( |$)' |
+                grep -v grep || true
+
+              echo "===== END RESOURCE MONITOR ====="
+              sleep 60
+            done
+          ) &
+
+          MONITOR_PID=$!
+
+          stop_monitor() {
+            kill "$MONITOR_PID" 2>/dev/null || true
+            wait "$MONITOR_PID" 2>/dev/null || true
+          }
+
+          trap stop_monitor EXIT
+
           ./compile.sh build \
             PREFER_DOCKER=no \
+            KERNEL_BTF=no \
             BOARD='${{ inputs.board }}' \
             BRANCH='${{ inputs.branch }}' \
             RELEASE='${{ inputs.release }}' \
