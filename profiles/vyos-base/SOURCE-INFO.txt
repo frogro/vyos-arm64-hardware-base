@@ -1,0 +1,31 @@
+Profile: vyos-base (B)
+Source board: rpi4b
+Kernel family: bcm2711-edge
+Kernel release used for derivation: 7.1.8-edge-bcm2711
+
+Armbian source commit:
+244984be3a64e34133c3b4fbe09acaf43b1b903b
+
+Factory A final kernel config SHA256:
+0ccf8ae95e80e48535382dbeaea0bba9de0c4161824c1f5213ecad6e8ae86eea
+
+Golden Pi final kernel config SHA256:
+a49e68b9925ba129bcb2e62e0821b82ecb89c8eb95ca975a53956b6eb3dd1580
+
+Derived B kernel requirements:
+841 enabled/additional Kconfig requirements
+
+kernel-required.tsv SHA256:
+17c86b55786de0f01309825c82f1dc0b5e0f5f2316b9fc22ed8960145fd26b89
+
+Locally generated rpi4b pre-Kconfig SHA256:
+275cfcbc5de496b0314f922286399980dd2f33f1938fe52886974603dd4c5a0c
+
+Derivation policy:
+- Factory Stock A is compared against the known-good Golden Pi.
+- All functional additions present in Golden are initially treated as B requirements.
+- Missing and explicitly disabled Kconfig symbols are treated as functionally disabled.
+- y/m changes for already-present capabilities are not automatically forced.
+- Compiler/Rust version metadata is not a B hardware capability.
+- Golden-only disablements are not propagated globally without separate justification.
+- Target boards other than rpi4b require counterpart/dependency resolution before Profile B is enabled.

@@ -1,0 +1,14 @@
+
+# Local hardware reference artifacts
+references/**/*.img
+references/**/*.img.xz
+references/**/*.img.zst
+references/**/*.tar.zst
+references/**/*.tar.gz
+
+# Local analysis / generated files
+analysis/
+profiles/vyos-base/generated/
+scripts/__pycache__/
+*.pyc
+scripts/*.bak

@@ -63,8 +63,11 @@ jobs:
             stock)
               ;;
             vyos-base)
-              echo "Profile B is intentionally blocked until the golden-reference package/kernel baseline is imported." >&2
-              exit 20
+              if [[ "${{ inputs.board }}" != "rpi4b" ]]; then
+                echo "Profile B is currently implemented only for BOARD=rpi4b." >&2
+                echo "Target-board resolution for other ARM64 boards is not complete yet." >&2
+                exit 20
+              fi
               ;;
             vyos-parity)
               echo "Profile C is intentionally blocked until profile B and VyOS kernel-parity policy are imported." >&2
@@ -113,7 +116,66 @@ jobs:
           }
           echo "Using board config: $found"
 
-      - name: Build Stock Armbian Edge minimal image
+      - name: Prepare Profile B kernel configuration
+        if: ${{ inputs.profile == 'vyos-base' }}
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          [[ "${{ inputs.board }}" == "rpi4b" ]] || {
+            echo "Profile B target resolution not implemented for BOARD=${{ inputs.board }}" >&2
+            exit 32
+          }
+
+          base="armbian-build/config/kernel/linux-bcm2711-edge.config"
+          req="profiles/vyos-base/kernel-required.tsv"
+          dst="armbian-build/userpatches/linux-bcm2711-edge.config"
+
+          [[ -f "$base" ]] || { echo "Missing Armbian base config: $base" >&2; exit 33; }
+          [[ -f "$req" ]] || { echo "Missing Profile B requirements: $req" >&2; exit 34; }
+
+          mkdir -p armbian-build/userpatches
+
+          ./scripts/apply-kconfig-requirements.py             "$base"             "$req"             "$dst"
+
+          python3 - "$req" "$dst" <<'PYCHECK'
+          from pathlib import Path
+          import re
+          import sys
+
+          reqfile = Path(sys.argv[1])
+          cfgfile = Path(sys.argv[2])
+
+          req = {}
+          for line in reqfile.read_text().splitlines():
+              if line.strip():
+                  k, v = line.split("\t", 1)
+                  req[k] = v
+
+          cfg = {}
+          for line in cfgfile.read_text().splitlines():
+              m = re.match(r"^(CONFIG_[A-Za-z0-9_]+)=(.*)$", line)
+              if m:
+                  cfg[m.group(1)] = m.group(2)
+
+          bad = [(k, v, cfg.get(k, "<missing>"))
+                 for k, v in req.items()
+                 if cfg.get(k) != v]
+
+          print(f"Profile B requirements: {len(req)}")
+          print(f"Exact pre-Kconfig matches: {len(req) - len(bad)}")
+          print(f"Missing/mismatching: {len(bad)}")
+
+          for row in bad[:50]:
+              print("\t".join(row))
+
+          if bad:
+              raise SystemExit(35)
+          PYCHECK
+
+          sha256sum "$req" "$dst"
+
+      - name: Build Armbian Edge minimal image
         working-directory: armbian-build
         shell: bash
         run: |
@@ -191,6 +253,12 @@ jobs:
           ((${#imgs[@]} > 0)) || { echo "No image found" >&2; exit 40; }
           cp -a "${imgs[@]}" release-assets/
           cp armbian-build-commit.txt release-assets/
+
+          if [[ "${{ inputs.profile }}" == "vyos-base" ]]; then
+            cp profiles/vyos-base/kernel-required.tsv               release-assets/kernel-required.tsv
+            cp armbian-build/userpatches/linux-bcm2711-edge.config               release-assets/requested-linux-bcm2711-edge.config
+          fi
+
           cat > release-assets/BUILD-INFO.txt <<EOF
           board=${{ inputs.board }}
           profile=${{ inputs.profile }}
