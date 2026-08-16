@@ -314,10 +314,14 @@ jobs:
         run: |
           set -euo pipefail
 
-          [[ "${{ inputs.board }}" == "rpi4b" ]] || {
-            echo "Profile C is currently validated only for BOARD=rpi4b." >&2
-            exit 21
-          }
+          case "${{ inputs.board }}" in
+            rpi4b|radxa-e52c)
+              ;;
+            *)
+              echo "Profile C is currently enabled for BOARD=rpi4b and BOARD=radxa-e52c." >&2
+              exit 21
+              ;;
+          esac
 
           [[ "${{ inputs.branch }}" == "edge" ]] || {
             echo "Profile C currently requires BRANCH=edge." >&2
