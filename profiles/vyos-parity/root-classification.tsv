@@ -1,0 +1,39 @@
+symbol	value	classification	reason
+CONFIG_KEXEC	y	portable	Architecture-independent VyOS kernel capability
+CONFIG_KEXEC_SIG	y	portable	Signed kexec image verification capability
+CONFIG_MODULE_DECOMPRESS	y	portable	In-kernel decompression capability independent of compression format
+CONFIG_MODULE_SIG	y	portable	Module signature verification capability
+CONFIG_MODULE_SIG_SHA512	y	portable	SHA512 support for module signatures
+CONFIG_SECURITY_LOCKDOWN_LSM	y	portable	Kernel lockdown capability
+CONFIG_SECURITY_LOCKDOWN_LSM_EARLY	y	portable	Early lockdown infrastructure
+
+CONFIG_MODULE_SIG_ALL	y	policy-review	Build/signing policy; requires reproducible signed-module workflow
+CONFIG_MODULE_SIG_FORCE	y	policy-review	Rejects unsigned modules; unsafe to impose before module-signing validation
+CONFIG_MODULE_SIG_KEY_TYPE_RSA	y	policy-review	Signing key implementation policy
+CONFIG_LOCK_DOWN_KERNEL_FORCE_NONE	y	policy-review	Default lockdown policy rather than additional capability
+CONFIG_VFIO_NOIOMMU	y	policy-review	Security-sensitive VFIO mode without IOMMU isolation
+
+CONFIG_ACPI_APEI	y	platform-optional	Firmware/platform error reporting
+CONFIG_ACPI_APEI_GHES	y	platform-optional	Firmware-first hardware error reporting
+CONFIG_ACPI_APEI_MEMORY_FAILURE	y	platform-optional	Platform memory error recovery
+CONFIG_ACPI_APEI_PCIEAER	y	platform-optional	Platform PCIe AER integration
+CONFIG_ACPI_BGRT	y	platform-optional	Firmware boot graphics table
+CONFIG_ACPI_EC	y	platform-optional	ACPI embedded controller support
+CONFIG_ACPI_HED	y	platform-optional	ACPI hardware error device
+CONFIG_ACPI_IPMI	m	platform-optional	Server/BMC integration
+CONFIG_ACPI_PCC	y	platform-optional	ACPI platform communications channel
+CONFIG_ACPI_PCI_SLOT	y	platform-optional	ACPI PCI slot enumeration
+
+CONFIG_NUMA_BALANCING	y	platform-optional	Relevant to NUMA systems, not universal ARM64 router functionality
+CONFIG_NUMA_BALANCING_DEFAULT_ENABLED	y	platform-optional	NUMA runtime policy
+
+CONFIG_HYPERV_VSOCKETS	m	platform-optional	Hyper-V guest functionality
+CONFIG_HYPERV_BALLOON	m	platform-optional	Hyper-V guest functionality
+CONFIG_HYPERV_NET	m	platform-optional	Hyper-V guest functionality
+CONFIG_HYPERV_UTILS	m	platform-optional	Hyper-V guest functionality
+
+CONFIG_VFIO_PCI	m	platform-optional	PCI passthrough capability
+CONFIG_VIRTIO_MMIO_CMDLINE_DEVICES	y	platform-optional	Virtual-machine/device-model capability
+CONFIG_VIRTIO_VDPA	m	platform-optional	vDPA/virtualization capability
+
+CONFIG_MLX5_VFIO_PCI	m	hardware-specific	Mellanox MLX5-specific VFIO support
