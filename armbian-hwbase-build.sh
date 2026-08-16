@@ -133,10 +133,6 @@ main() {
     PROFILE="$(pick_profile)"
 
     VYOS_VERSION=latest
-    if [[ "$PROFILE" == vyos-parity ]]; then
-        read -r -p "VyOS Rolling reference [latest]: " VYOS_VERSION
-        VYOS_VERSION="${VYOS_VERSION:-latest}"
-    fi
 
     echo
     echo "Selected build"
@@ -147,8 +143,13 @@ main() {
     echo "Profile        : $PROFILE"
     echo "Branch         : edge"
     echo "Release        : $RELEASE"
-    echo "Armbian commit : $ARMBIAN_COMMIT"
-    [[ "$PROFILE" == vyos-parity ]] && echo "VyOS reference : $VYOS_VERSION"
+    if [[ "$PROFILE" == vyos-parity ]]; then
+        echo "Armbian source  : current main (frozen by GitHub)"
+        echo "VyOS reference : current official Rolling (frozen by GitHub)"
+        echo "Publishing     : normal GitHub release"
+    else
+        echo "Armbian commit : $ARMBIAN_COMMIT"
+    fi
     echo
 
     read -r -p "Trigger GitHub Actions build now? [y/N]: " ans

@@ -39,7 +39,7 @@ on:
         default: latest
         type: string
       publish:
-        description: "Create a private GitHub release after successful build"
+        description: "Create a GitHub release after successful build"
         required: true
         default: true
         type: boolean
@@ -370,6 +370,7 @@ jobs:
             rsync \
             squashfs-tools \
             wget \
+            xorriso \
             xz-utils \
             zstd
 
@@ -509,6 +510,7 @@ jobs:
           ls -lh "$ASSET_DIR"
 
       - name: Upload Profile C workflow artifact
+        if: ${{ inputs.publish == false }}
         uses: actions/upload-artifact@v7
         with:
           name: hardware-base-${{ inputs.board }}-vyos-parity
@@ -516,7 +518,7 @@ jobs:
           if-no-files-found: error
           retention-days: 14
 
-      - name: Publish Profile C candidate release
+      - name: Publish Profile C release
         if: ${{ inputs.publish }}
         env:
           GH_TOKEN: ${{ github.token }}
@@ -529,7 +531,7 @@ jobs:
           TAG='hb-${{ inputs.board }}-vyos-parity-${{ github.run_number }}'
 
           {
-            echo "Automated Profile C candidate."
+            echo "Automated Profile C release."
             echo
             echo '```text'
             cat "$ASSET_DIR/BUILD-INFO.txt"
@@ -539,6 +541,5 @@ jobs:
           gh release create "$TAG" \
             "$ASSET_DIR"/* \
             --repo "$GITHUB_REPOSITORY" \
-            --title "${{ inputs.board }} / Profile C / automated candidate" \
-            --notes-file /tmp/profile-c-release-notes.md \
-            --prerelease
+            --title "${{ inputs.board }} / Profile C / automated release" \
+            --notes-file /tmp/profile-c-release-notes.md
