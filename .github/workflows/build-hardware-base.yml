@@ -29,8 +29,9 @@ on:
         default: trixie
         type: string
       armbian_ref:
-        description: "Exact Armbian git commit/tag/ref"
-        required: true
+        description: "Legacy A/B Armbian ref; Profile C freezes current main itself"
+        required: false
+        default: main
         type: string
       vyos_version:
         description: "VyOS Rolling reference for profile C"
@@ -48,6 +49,7 @@ permissions:
 
 jobs:
   build:
+    if: ${{ inputs.profile != 'vyos-parity' }}
     runs-on: ubuntu-24.04
     timeout-minutes: 360
 
@@ -276,7 +278,7 @@ jobs:
           ls -lh release-assets
 
       - name: Upload workflow artifact
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: hardware-base-${{ inputs.board }}-${{ inputs.profile }}
           path: release-assets/
@@ -297,3 +299,246 @@ jobs:
             --repo "$GITHUB_REPOSITORY" \
             --title "${{ inputs.board }} / ${{ inputs.profile }} / Armbian Edge" \
             --notes "BOARD=${{ inputs.board }}; profile=${{ inputs.profile }}; branch=${{ inputs.branch }}; release=${{ inputs.release }}; Armbian ref=${{ inputs.armbian_ref }}."
+
+  profile-c:
+    if: ${{ inputs.profile == 'vyos-parity' }}
+    runs-on: ubuntu-24.04
+    timeout-minutes: 360
+
+    steps:
+      - name: Checkout hardware-base repository
+        uses: actions/checkout@v7
+
+      - name: Validate Profile C target
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          [[ "${{ inputs.board }}" == "rpi4b" ]] || {
+            echo "Profile C is currently validated only for BOARD=rpi4b." >&2
+            exit 21
+          }
+
+          [[ "${{ inputs.branch }}" == "edge" ]] || {
+            echo "Profile C currently requires BRANCH=edge." >&2
+            exit 22
+          }
+
+          [[ "${{ inputs.release }}" == "trixie" ]] || {
+            echo "Profile C currently requires RELEASE=trixie." >&2
+            exit 23
+          }
+
+          case "${{ inputs.vyos_version }}" in
+            ""|latest)
+              ;;
+            *)
+              echo "Profile C resolves the current official VyOS Rolling itself; use vyos_version=latest." >&2
+              exit 24
+              ;;
+          esac
+
+      - name: Free runner disk space
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          sudo rm -rf \
+            /usr/local/lib/android \
+            /usr/share/dotnet \
+            /opt/ghc \
+            || true
+
+          df -h /
+
+      - name: Install Profile C snapshot dependencies
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          sudo apt-get update
+
+          sudo apt-get install -y \
+            ca-certificates \
+            curl \
+            file \
+            git \
+            jq \
+            minisign \
+            p7zip-full \
+            python3 \
+            rsync \
+            squashfs-tools \
+            wget \
+            xz-utils \
+            zstd
+
+      - name: Initialize Armbian base repository and build host
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          ARB_BASE="$HOME/.cache/vyos-armbian-hwbase/armbian-build"
+
+          mkdir -p "$(dirname "$ARB_BASE")"
+
+          git clone \
+            --filter=blob:none \
+            --no-tags \
+            --branch main \
+            https://github.com/armbian/build.git \
+            "$ARB_BASE"
+
+          echo
+          echo "===== INITIAL ARMBIAN MAIN ====="
+          git -C "$ARB_BASE" rev-parse HEAD
+
+          (
+            cd "$ARB_BASE"
+            sudo ./compile.sh requirements
+          )
+
+          sudo chown -R "$USER:$USER" "$ARB_BASE"
+
+      - name: Freeze current Armbian, VyOS Rolling and target kernel
+        id: snapshot
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          LOG="$(mktemp)"
+
+          ./scripts/prepare-c-snapshot.sh \
+            '${{ inputs.board }}:${{ inputs.branch }}:${{ inputs.release }}' \
+            | tee "$LOG"
+
+          SNAP="$(
+            sed -n 's/^SNAPSHOT_DIR=//p' "$LOG" |
+              tail -1
+          )"
+
+          [[ -n "$SNAP" && -d "$SNAP" ]] || {
+            echo "Snapshot directory was not produced." >&2
+            exit 30
+          }
+
+          TARGET_ID='${{ inputs.board }}__${{ inputs.branch }}__${{ inputs.release }}'
+
+          [[ -d "$SNAP/targets/$TARGET_ID" ]] || {
+            echo "Resolved target missing: $TARGET_ID" >&2
+            exit 31
+          }
+
+          echo "dir=$SNAP" >> "$GITHUB_OUTPUT"
+          echo "target=$TARGET_ID" >> "$GITHUB_OUTPUT"
+
+          echo
+          echo "===== FROZEN SNAPSHOT ====="
+          cat "$SNAP/SNAPSHOT-INFO.txt"
+
+          echo
+          echo "===== FROZEN TARGET ====="
+          cat "$SNAP/targets/$TARGET_ID/SOURCE-INFO.txt"
+
+      - name: Build and validate Profile C image
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          (
+            while true; do
+              echo
+              echo "===== PROFILE C RESOURCE MONITOR $(date -u --iso-8601=seconds) ====="
+
+              uptime || true
+
+              echo "--- memory ---"
+              free -h || true
+
+              echo "--- disk ---"
+              df -h / || true
+
+              echo "--- top processes ---"
+              ps -eo pid,ppid,state,%cpu,%mem,rss,etime,comm,args \
+                --sort=-%cpu |
+                head -30 || true
+
+              sleep 60
+            done
+          ) &
+
+          MONITOR_PID=$!
+
+          stop_monitor() {
+            kill "$MONITOR_PID" 2>/dev/null || true
+            wait "$MONITOR_PID" 2>/dev/null || true
+          }
+
+          trap stop_monitor EXIT
+
+          ./scripts/build-c-snapshot-target.sh \
+            '${{ steps.snapshot.outputs.dir }}' \
+            '${{ steps.snapshot.outputs.target }}'
+
+      - name: Show Profile C release metadata
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          ASSET_DIR='${{ steps.snapshot.outputs.dir }}/targets/${{ steps.snapshot.outputs.target }}/c-image'
+
+          [[ -s "$ASSET_DIR/BUILD-INFO.txt" ]] || {
+            echo "BUILD-INFO.txt missing" >&2
+            exit 40
+          }
+
+          [[ -s "$ASSET_DIR/SHA256SUMS" ]] || {
+            echo "SHA256SUMS missing" >&2
+            exit 41
+          }
+
+          echo "===== BUILD INFO ====="
+          cat "$ASSET_DIR/BUILD-INFO.txt"
+
+          echo
+          echo "===== SHA256SUMS ====="
+          cat "$ASSET_DIR/SHA256SUMS"
+
+          echo
+          echo "===== RELEASE ASSETS ====="
+          ls -lh "$ASSET_DIR"
+
+      - name: Upload Profile C workflow artifact
+        uses: actions/upload-artifact@v7
+        with:
+          name: hardware-base-${{ inputs.board }}-vyos-parity
+          path: ${{ steps.snapshot.outputs.dir }}/targets/${{ steps.snapshot.outputs.target }}/c-image/
+          if-no-files-found: error
+          retention-days: 14
+
+      - name: Publish Profile C candidate release
+        if: ${{ inputs.publish }}
+        env:
+          GH_TOKEN: ${{ github.token }}
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          ASSET_DIR='${{ steps.snapshot.outputs.dir }}/targets/${{ steps.snapshot.outputs.target }}/c-image'
+
+          TAG='hb-${{ inputs.board }}-vyos-parity-${{ github.run_number }}'
+
+          {
+            echo "Automated Profile C candidate."
+            echo
+            echo '```text'
+            cat "$ASSET_DIR/BUILD-INFO.txt"
+            echo '```'
+          } > /tmp/profile-c-release-notes.md
+
+          gh release create "$TAG" \
+            "$ASSET_DIR"/* \
+            --repo "$GITHUB_REPOSITORY" \
+            --title "${{ inputs.board }} / Profile C / automated candidate" \
+            --notes-file /tmp/profile-c-release-notes.md \
+            --prerelease
