@@ -12,14 +12,22 @@ Factory A final kernel config SHA256:
 Golden Pi final kernel config SHA256:
 a49e68b9925ba129bcb2e62e0821b82ecb89c8eb95ca975a53956b6eb3dd1580
 
-Derived B kernel requirements:
+Raw Golden-added B kernel requirements:
 841 enabled/additional Kconfig requirements
 
-kernel-required.tsv SHA256:
-17c86b55786de0f01309825c82f1dc0b5e0f5f2316b9fc22ed8960145fd26b89
+Validated functional B requirements:
+840 requirements
 
-Locally generated rpi4b pre-Kconfig SHA256:
+Excluded after final B/Pi validation:
+CONFIG_CC_CAN_LINK=y
+Reason: compiler/link capability probe; Kconfig resolved it to n and it does not represent a runtime hardware capability.
+
+Current kernel-required.tsv SHA256:
+f12829176db8d40bbaf543664a0cc5ce907aa54121eabb522063254b67b7609f
+
+Validated B/Pi build pre-Kconfig SHA256:
 275cfcbc5de496b0314f922286399980dd2f33f1938fe52886974603dd4c5a0c
+Note: this validated build input still contained the raw CONFIG_CC_CAN_LINK requirement.
 
 Derivation policy:
 - Factory Stock A is compared against the known-good Golden Pi.
@@ -29,3 +37,26 @@ Derivation policy:
 - Compiler/Rust version metadata is not a B hardware capability.
 - Golden-only disablements are not propagated globally without separate justification.
 - Target boards other than rpi4b require counterpart/dependency resolution before Profile B is enabled.
+
+Validation result:
+- release: hb-rpi4b-vyos-base-7
+- GitHub Actions run: 31933122314
+- Armbian commit: 244984be3a64e34133c3b4fbe09acaf43b1b903b
+- raw image SHA256: 986f07a6cdafb4a2ae7337371644df0f6b524dba7b26cb1e6ee6e8e70ffc05f5
+- final kernel config SHA256: e085c785f2ab333dbf8d91cd20846bfeca23aaa13718dfd3e9dc268a5cde80fd
+- final modules: 3055
+- Golden modules: 3055
+- DTB/overlay basenames: 403 / 403
+- DTB/overlay hash differences: 0
+- boot text differences versus Factory A: 0
+- firmware requirement coverage versus Factory A: identical
+- functional Golden capabilities missing from B: 0
+
+Final config differences versus Golden:
+- CONFIG_CC_CAN_LINK: B=n, Golden=y — compiler/link probe
+- CONFIG_CRYPTO_SHA512: B=m, Golden=y — same capability, module vs built-in
+- CONFIG_RUSTC_LLVM_MAJOR_VERSION: B=0, Golden=17 — build metadata
+- CONFIG_RUSTC_LLVM_VERSION: B=0, Golden=170006 — build metadata
+- CONFIG_RUSTC_VERSION: B=0, Golden=107500 — build metadata
+- CONFIG_SERIO_SERPORT: B=y, Golden=m — same capability, built-in vs module
+- CONFIG_SHUFFLE_PAGE_ALLOCATOR: B=y, Golden=n — Stock Armbian behavior retained; Golden disablement not forced

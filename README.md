@@ -135,7 +135,11 @@ Golden unique modules:       3055
 Golden additional modules:    487
 ```
 
-The 841 Golden-added Kconfig requirements are stored in:
+The raw comparison initially produced 841 Golden-added Kconfig requirements.
+
+Final B/Pi validation showed that `CONFIG_CC_CAN_LINK` is a compiler/link capability probe rather than a functional runtime requirement. It was therefore removed from the portable B baseline.
+
+The validated functional Profile-B catalog now contains **840 requirements**:
 
 ```text
 profiles/vyos-base/kernel-required.tsv
@@ -154,7 +158,7 @@ For Raspberry Pi this currently means:
 ```text
 Armbian linux-bcm2711-edge config
              |
-             | + 841 B requirements
+             | + validated B requirements
              v
 requested B pre-config
              |
@@ -368,8 +372,8 @@ Golden Pi inventory completed
 A/Pi -> Golden comparison completed
 Profile B requirement catalog generated
 
-B / Raspberry Pi    implemented; build/validation in progress
-C / Raspberry Pi    next after B/Pi validation
+B / Raspberry Pi    implemented and validated
+C / Raspberry Pi    next
 
 B / Radxa E52C      after complete Pi A/B/C validation
 C / Radxa E52C      after B/E52C validation
@@ -377,7 +381,7 @@ C / Radxa E52C      after B/E52C validation
 
 Profile B is currently enabled only for the Raspberry Pi reference target.
 
-Profile C remains blocked until the final B/Pi image has been validated and the official VyOS Rolling parity delta has been classified.
+Profile C remains blocked until the official VyOS Rolling parity delta has been captured and classified.
 
 Other boards must not be enabled for B or C until their target-specific requirement resolution has been performed.
 
