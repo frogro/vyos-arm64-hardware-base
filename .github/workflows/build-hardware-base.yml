@@ -179,6 +179,7 @@ jobs:
             BUILD_MINIMAL=yes \
             KERNEL_CONFIGURE=no \
             NETWORKING_STACK=systemd-networkd \
+            COMPRESS_OUTPUTIMAGE=xz \
             SHARE_LOG=no
 
       - name: Collect image and build metadata
