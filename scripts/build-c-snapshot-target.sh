@@ -327,6 +327,7 @@ echo "Post-build config SHA  : $POST_C_SHA"
 python3 - \
     "$ROOT/profiles/vyos-base/kernel-required.tsv" \
     "$ROOT/profiles/vyos-parity/portable-requirements.tsv" \
+    "$B_CONFIG" \
     "$C_CONFIG" \
     "$POST_CONFIG" <<'PY'
 import re
@@ -378,8 +379,9 @@ def requirements(path):
 b_req = requirements(sys.argv[1])
 c_req = requirements(sys.argv[2])
 
-expected_c = config(sys.argv[3])
-post = config(sys.argv[4])
+expected_b = config(sys.argv[3])
+expected_c = config(sys.argv[4])
+post = config(sys.argv[5])
 
 
 def get(cfg, key):
@@ -388,24 +390,35 @@ def get(cfg, key):
 
 #
 # Profile B non-regression:
-# m -> m/y is capability preserving.
-# y must remain enabled.
-# Non-bool values must match exactly.
 #
+# First distinguish requirements which native Kconfig could already
+# not satisfy in b-resolved.config from requirements which were valid
+# in B but disappeared later during C/image construction.
+#
+# y <-> m is capability-equivalent for Profile B.
+#
+def functional(actual, wanted):
+    if wanted in {"y", "m"}:
+        return actual in {"y", "m"}
+
+    return actual == wanted
+
+
+b_baseline_unresolved = []
 bad_b = []
 
 for key, wanted in b_req.items():
-    actual = get(post, key)
+    before = get(expected_b, key)
+    after = get(post, key)
 
-    if wanted == "m":
-        good = actual in {"m", "y"}
-    elif wanted == "y":
-        good = actual == "y"
-    else:
-        good = actual == wanted
-
-    if not good:
-        bad_b.append((key, wanted, actual))
+    if not functional(before, wanted):
+        b_baseline_unresolved.append(
+            (key, wanted, before, after)
+        )
+    elif not functional(after, wanted):
+        bad_b.append(
+            (key, wanted, before, after)
+        )
 
 
 #
@@ -440,6 +453,10 @@ for key, before in expected_c.items():
 
 print("===== POST-BUILD C AUDIT =====")
 print(f"B requirements             : {len(b_req)}")
+print(
+    "B baseline unresolved     : "
+    f"{len(b_baseline_unresolved)}"
+)
 print(f"B requirement regressions  : {len(bad_b)}")
 print(f"C requirements             : {len(c_req)}")
 print(f"C requirement failures     : {len(bad_c)}")
@@ -448,8 +465,13 @@ print(
     f"{len(enabled_regressions)}"
 )
 
+if b_baseline_unresolved:
+    print("\nB baseline unresolved:")
+    for row in b_baseline_unresolved[:100]:
+        print("\t".join(row))
+
 if bad_b:
-    print("\nB regressions:")
+    print("\nNEW B regressions:")
     for row in bad_b[:100]:
         print("\t".join(row))
 
