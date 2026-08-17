@@ -179,6 +179,71 @@ echo "Validated C config SHA256:"
 echo "$PRE_C_SHA"
 
 #
+# The native resolver already proved that A -> B -> C is valid for this
+# target.  During a full Armbian image build, however, Armbian's normal
+# kernel-config hooks run again and may override values from the user
+# defconfig.
+#
+# Re-assert the complete validated Profile B requirement set together
+# with the Profile C portable roots in our late custom extension.
+# Profile C wins if a symbol occurs in both sets.
+#
+MERGED_EXT_REQ="$RES/hwbase-c-build-requirements.tsv"
+C_BUILD_EXT="$ARB/userpatches/extensions/hwbase-c-parity.tsv"
+
+python3 - \
+    "$ROOT/profiles/vyos-base/kernel-required.tsv" \
+    "$ROOT/profiles/vyos-parity/portable-requirements.tsv" \
+    "$MERGED_EXT_REQ" <<'PY_MERGE_REQS'
+from pathlib import Path
+import sys
+
+
+def requirements(path):
+    out = {}
+
+    for raw in Path(path).read_text().splitlines():
+        line = raw.strip()
+
+        if not line or line.startswith("#"):
+            continue
+
+        key, value = line.split("\t", 1)
+        out[key] = value
+
+    return out
+
+
+merged = requirements(sys.argv[1])
+
+# C deliberately overrides B on duplicate symbols.
+merged.update(requirements(sys.argv[2]))
+
+Path(sys.argv[3]).write_text(
+    "".join(
+        f"{key}\t{value}\n"
+        for key, value in merged.items()
+    )
+)
+
+print(f"Merged B+C build requirements: {len(merged)}")
+PY_MERGE_REQS
+
+[[ -s "$ARB/userpatches/extensions/hwbase-c-parity.sh" ]] ||
+    die "Profile C Armbian extension missing"
+
+sudo install \
+    -o "$(id -u)" \
+    -g "$(id -g)" \
+    -m 0644 \
+    "$MERGED_EXT_REQ" \
+    "$C_BUILD_EXT"
+
+echo
+echo "===== ACTUAL IMAGE BUILD REQUIREMENTS ====="
+wc -l "$C_BUILD_EXT"
+
+#
 # ------------------------------------------------------------
 # STEP 2
 # Build the actual image with the same pinned target.
